@@ -1,0 +1,16 @@
+streamlit 
+requests 
+cachetools 
+pypdf 
+beautifulsoup4 
+httpx 
+pdfplumber 
+langchain-community 
+langchain-core 
+langchain-text-splitters 
+openai-whisper 
+numpy 
+torch 
+torchaudio 
+soundfile 
+streamlit-mic-recorder

@@ -232,7 +232,7 @@ st.markdown("""
     
     /* Medical-themed progress bars */
     .stProgress > div > div > div {
-        background: linear-gradient(90deg, #007bff, #28a745);
+        background-color: white;
     }
     
     /* Enhanced text areas and inputs */
@@ -884,8 +884,6 @@ def render_agents_timeline(events: List[Dict[str, Any]], dx_ranked: List[Dict[st
 	if not events:
 		return
 	
-	st.markdown("### 📊 Multi-Agent Workflow Timeline")
-	
 	for i, event in enumerate(events):
 		agent_name = event.get('agent', 'Unknown Agent')
 		action = event.get('action', 'Unknown')
@@ -1023,34 +1021,10 @@ def main():
 			st.markdown("---")
 			st.markdown("## 📋 **Clinical Results Summary**")
 			
-			# Create tabs for organized results display
-			tab1, tab2, tab3, tab4 = st.tabs(["🎯 Diagnoses", "🚨 Risk Assessment", "📋 Clinical Advisory", "📊 Detailed Timeline"])
-			
-			with tab1:
-				st.markdown("### 🎯 Diagnostic Analysis Results")
-				if dx_validated:
-					render_diagnoses(dx_validated)
-				else:
-					st.warning("No diagnoses were generated.")
-			
-			with tab2:
-				st.markdown("### 🚨 Risk Assessment & Red Flags")
-				if flags:
-					render_risk_flags(flags)
-				else:
-					st.info("✅ No significant risk flags detected based on the provided data.")
-			
-			with tab3:
-				st.markdown("### 📋 Clinical Advisory & Recommendations")
-				if advice:
-					render_clinical_advisory(advice)
-				else:
-					st.warning("No clinical advisory was generated.")
-			
-			with tab4:
-				st.markdown("### 📊 Multi-Agent Processing Timeline")
-				# Render detailed timeline
-				render_agents_timeline(session["events"], dx_validated, flags, advice, structured)
+			# Display comprehensive results in single timeline view
+			st.markdown("### 📊 Multi-Agent Processing Timeline")
+			# Render detailed timeline with all information
+			render_agents_timeline(session["events"], dx_validated, flags, advice, structured)
 			
 	
 	with col2:

@@ -29,7 +29,7 @@ class ReportExtractAgent:
 	def __init__(self, reasoner: OllamaReasoner) -> None:
 		self.reasoner = reasoner
 
-	def extract_from_pdf(self, pdf_bytes: bytes) -> Dict[str, Any]:
+	def extract_from_pdf(self, pdf_bytes: bytes, progress_callback=None) -> Dict[str, Any]:
 		"""Robust multi-pass PDF extraction with parallel processing and result merging."""
 		print(f"🔍 Starting robust PDF extraction. LANGCHAIN_AVAILABLE: {LANGCHAIN_AVAILABLE}, ENHANCED_PDF_AVAILABLE: {ENHANCED_PDF_AVAILABLE}")
 		
@@ -49,38 +49,57 @@ class ReportExtractAgent:
 				# Pass 1: LangChain PyPDFLoader (structured text)
 				if LANGCHAIN_AVAILABLE and PyPDFLoader:
 					print("🚀 Pass 1: LangChain PyPDFLoader extraction...")
+					if progress_callback:
+						progress_callback("pass1", "running", "LangChain PyPDFLoader extraction in progress...")
 					try:
 						loader = PyPDFLoader(temp_file_path)
 						documents = loader.load()
 						total_text = "\n".join([doc.page_content for doc in documents if doc.page_content])
-						
 						if len(total_text.strip()) > 50:  # Lower threshold for partial success
 							result = self._process_langchain_documents(documents)
 							if result and not result.get("error"):
 								extraction_results.append(("LangChain", result))
-								print(f"✅ LangChain extraction successful: {len(total_text)} characters")
+								print(f" LangChain extraction successful: {len(total_text)} characters")
+								if progress_callback:
+									progress_callback("pass1", "completed", f"LangChain extraction successful: {len(total_text)} characters")
 							else:
-								print("⚠️ LangChain processing failed")
+								print(" LangChain processing failed")
+								if progress_callback:
+									progress_callback("pass1", "failed", "LangChain processing failed")
 						else:
-							print("⚠️ LangChain extraction yielded minimal text")
+							print(" LangChain extraction yielded minimal text")
+							if progress_callback:
+								progress_callback("pass1", "failed", "LangChain extraction yielded minimal text")
 					except Exception as e:
-						print(f"❌ LangChain extraction failed: {e}")
+						print(f" LangChain extraction failed: {e}")
+						if progress_callback:
+							progress_callback("pass1", "failed", f"LangChain extraction failed: {e}")
 				
 				# Pass 2: pdfplumber (enhanced text + tables)
 				if ENHANCED_PDF_AVAILABLE and pdfplumber:
-					print("📋 Pass 2: pdfplumber extraction...")
+					print(" Pass 2: pdfplumber extraction...")
+					if progress_callback:
+						progress_callback("pass2", "running", "pdfplumber extraction in progress...")
 					try:
 						result = self._extract_with_pdfplumber(temp_file_path)
 						if result and not result.get("error"):
 							extraction_results.append(("pdfplumber", result))
-							print("✅ pdfplumber extraction successful")
+							print(" pdfplumber extraction successful")
+							if progress_callback:
+								progress_callback("pass2", "completed", "pdfplumber extraction successful")
 						else:
-							print("⚠️ pdfplumber extraction failed")
+							print(" pdfplumber extraction failed")
+							if progress_callback:
+								progress_callback("pass2", "failed", "pdfplumber extraction failed")
 					except Exception as e:
-						print(f"❌ pdfplumber extraction failed: {e}")
+						print(f" pdfplumber extraction failed: {e}")
+						if progress_callback:
+							progress_callback("pass2", "failed", f"pdfplumber extraction failed: {e}")
 				
 				# Pass 3: Basic PyPDF (fallback)
-				print("📖 Pass 3: Basic PyPDF extraction...")
+				print(" Pass 3: Basic PyPDF extraction...")
+				if progress_callback:
+					progress_callback("pass3", "running", "PyPDF extraction in progress...")
 				try:
 					with open(temp_file_path, 'rb') as f:
 						reader = PdfReader(f)
@@ -97,12 +116,20 @@ class ReportExtractAgent:
 							if result and not result.get("error"):
 								extraction_results.append(("PyPDF", result))
 								print("✅ PyPDF extraction successful")
+								if progress_callback:
+									progress_callback("pass3", "completed", "PyPDF extraction successful")
 							else:
 								print("⚠️ PyPDF processing failed")
+								if progress_callback:
+									progress_callback("pass3", "failed", "PyPDF processing failed")
 						else:
 							print("⚠️ PyPDF extraction yielded minimal text")
+							if progress_callback:
+								progress_callback("pass3", "failed", "PyPDF extraction yielded minimal text")
 				except Exception as e:
 					print(f"❌ PyPDF extraction failed: {e}")
+					if progress_callback:
+						progress_callback("pass3", "failed", f"PyPDF extraction failed: {e}")
 				
 				# Merge all successful extractions
 				if extraction_results:
@@ -232,16 +259,24 @@ class ReportExtractAgent:
 			"```\n\n"
 			"You may add explanatory text outside the code blocks if needed, but the JSON must be inside ```json blocks.\n\n"
 			"EXTRACTION REQUIREMENTS:\n"
+			"- **DEMOGRAPHICS (CRITICAL)**: Look carefully for patient age and sex/gender. Search for:\n"
+			"  * Age: numbers followed by 'years old', 'y/o', 'yr old', 'age', or similar\n"
+			"  * Sex: 'Male', 'Female', 'M', 'F', 'man', 'woman', 'gender', or similar\n"
+			"  * Common locations: patient header, demographics section, admission notes\n"
 			"- Extract ALL laboratory values with exact numbers, units, and reference ranges\n"
 			"- Include ALL vital signs (BP, HR, temp, respiratory rate, SpO2)\n"
 			"- List ALL medications with dosages and frequencies\n"
 			"- Include ALL imaging results and interpretations\n"
-			"- Extract demographics (age, sex) if mentioned\n"
 			"- List ALL diagnoses and medical conditions mentioned\n\n"
 			"If you cannot find data for a field, use:\n"
 			"- Empty string \"\" for text fields\n"
 			"- Empty array [] for diagnoses\n"
 			"- null for missing age/sex\n\n"
+			"DEMOGRAPHICS EXAMPLES TO LOOK FOR:\n"
+			"- '45-year-old male' → age: 45, sex: 'Male'\n"
+			"- 'Age: 67, Gender: Female' → age: 67, sex: 'Female'\n"
+			"- 'Patient is a 32 y/o woman' → age: 32, sex: 'Female'\n"
+			"- 'DOB: 1980 (43 years old), Sex: M' → age: 43, sex: 'Male'\n\n"
 			f"MEDICAL DOCUMENT CONTENT:\n{text}"
 		)
 		

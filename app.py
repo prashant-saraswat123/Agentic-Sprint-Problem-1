@@ -628,23 +628,62 @@ def aggregate_inputs(inputs: Dict[str, Any], extractor: ReportExtractAgent, sess
 			"details": "Voice transcription integrated into clinical data"
 		})
 	
-	# Process PDF
+	# Process PDF with detailed pass tracking
 	if inputs["pdf_file"] is not None:
-		with st.spinner("🔍 Processing PDF through LangChain + Ollama..."):
-			try:
-				pdf_bytes = inputs["pdf_file"].getvalue()
-				extracted = extractor.extract_from_pdf(pdf_bytes)
-				data = merge_data_sources(data, extracted, "PDF")
-				
-				session.setdefault("events", []).append({
-					"agent": "📄 LangChain Extract", 
-					"action": "PDF Processing", 
-					"details": "PDF processed and data extracted successfully"
-				})
-				st.success("✅ PDF processed through LangChain + Ollama pipeline!")
-				
-			except Exception as e:
-				st.error(f"❌ PDF processing failed: {e}")
+		# Create a progress container for Step 1 passes
+		step1_progress_container = st.container()
+		with step1_progress_container:
+			st.markdown("#### 📄 Step 1 - PDF Extraction Progress")
+			pass_cols = st.columns(3)
+			
+			# Initialize pass status displays
+			with pass_cols[0]:
+				pass1_status = st.empty()
+				pass1_status.markdown("⏳ **Pass 1:** LangChain PyPDFLoader")
+			with pass_cols[1]:
+				pass2_status = st.empty()
+				pass2_status.markdown("⏳ **Pass 2:** pdfplumber Tables")
+			with pass_cols[2]:
+				pass3_status = st.empty()
+				pass3_status.markdown("⏳ **Pass 3:** PyPDF Fallback")
+		
+		# Define progress callback function
+		def update_pass_status(pass_id, status, message):
+			status_icons = {
+				"running": "🚀",
+				"completed": "✅", 
+				"failed": "❌"
+			}
+			icon = status_icons.get(status, "⏳")
+			
+			if pass_id == "pass1":
+				pass1_status.markdown(f"{icon} **Pass 1:** LangChain PyPDFLoader - {status.title()}")
+			elif pass_id == "pass2":
+				pass2_status.markdown(f"{icon} **Pass 2:** pdfplumber Tables - {status.title()}")
+			elif pass_id == "pass3":
+				pass3_status.markdown(f"{icon} **Pass 3:** PyPDF Fallback - {status.title()}")
+		
+		try:
+			pdf_bytes = inputs["pdf_file"].getvalue()
+			
+			# Call extract method with progress callback
+			extracted = extractor.extract_from_pdf(pdf_bytes, progress_callback=update_pass_status)
+			
+			data = merge_data_sources(data, extracted, "PDF")
+			
+			session.setdefault("events", []).append({
+				"agent": "📄 Multi-Pass Extract", 
+				"action": "PDF Processing (3 Passes)", 
+				"details": "PDF processed through LangChain → pdfplumber → PyPDF pipeline"
+			})
+			st.success("✅ PDF processed through 3-pass extraction pipeline!")
+			
+		except Exception as e:
+			# Update all passes to show failure if extraction completely fails
+			pass1_status.markdown("❌ **Pass 1:** LangChain PyPDFLoader - Failed")
+			pass2_status.markdown("❌ **Pass 2:** pdfplumber Tables - Failed") 
+			pass3_status.markdown("❌ **Pass 3:** PyPDF Fallback - Failed")
+			st.error(f"❌ PDF processing failed: {e}")
 	
 	# Process URL
 	if inputs["url"]:
@@ -705,7 +744,6 @@ def render_diagnoses(diagnoses: List[Dict[str, Any]]):
 			<p><strong>Confidence:</strong> {confidence_pct}%</p>
 			<p><strong>Evidence:</strong> {dx.get('evidence', 'No evidence provided')}</p>
 			<p style="color: {status_color}; font-weight: bold;"><strong>Clinical Validation:</strong> {validation_status}</p>
-			{f'<p style="color: {status_color}; font-size: 0.9em;"><strong>Rule Engine:</strong> {rule_engine_notes}</p>' if rule_engine_notes else ''}
 		</div>
 		""", unsafe_allow_html=True)
 
@@ -953,16 +991,66 @@ def main():
 			progress_bar.progress(100)
 			time.sleep(1)  # Show completion
 			
-			# Clear progress indicators
-			progress_bar.empty()
-			status_text.empty()
+			# Keep progress indicators visible for reference
+			status_text.text("✅ Analysis Complete - All 6 steps completed successfully")
+			
+			# Add a progress summary section
+			st.markdown("### 📏 Processing Summary")
+			progress_cols = st.columns(6)
+			step_names = [
+				"📥 Data Ingestion",
+				"🔧 Data Structuring", 
+				"🧠 AI Diagnosis",
+				"🩺 Clinical Validation",
+				"⚠️ Risk Assessment",
+				"📋 Advisory Generation"
+			]
+			
+			for i, (col, step_name) in enumerate(zip(progress_cols, step_names)):
+				with col:
+					st.markdown(f"""
+					<div style="text-align: center; padding: 10px; background: rgba(40, 167, 69, 0.1); border-radius: 8px; border-left: 3px solid #28a745;">
+						<div style="font-size: 1.2em; margin-bottom: 5px;">✅</div>
+						<div style="font-size: 0.8em; font-weight: bold;">Step {i+1}</div>
+						<div style="font-size: 0.7em;">{step_name.split(' ', 1)[1]}</div>
+					</div>
+					""", unsafe_allow_html=True)
 			
 			# Display results
-			st.success("✅ AI Analysis Complete!")
+			st.success("🎉 AI Analysis Complete! All 6 processing steps finished successfully. Results are displayed below.")
 			
+			# === MAIN RESULTS SECTION ===
+			st.markdown("---")
+			st.markdown("## 📋 **Clinical Results Summary**")
 			
-			# Render results
-			render_agents_timeline(session["events"], dx_validated, flags, advice, structured)
+			# Create tabs for organized results display
+			tab1, tab2, tab3, tab4 = st.tabs(["🎯 Diagnoses", "🚨 Risk Assessment", "📋 Clinical Advisory", "📊 Detailed Timeline"])
+			
+			with tab1:
+				st.markdown("### 🎯 Diagnostic Analysis Results")
+				if dx_validated:
+					render_diagnoses(dx_validated)
+				else:
+					st.warning("No diagnoses were generated.")
+			
+			with tab2:
+				st.markdown("### 🚨 Risk Assessment & Red Flags")
+				if flags:
+					render_risk_flags(flags)
+				else:
+					st.info("✅ No significant risk flags detected based on the provided data.")
+			
+			with tab3:
+				st.markdown("### 📋 Clinical Advisory & Recommendations")
+				if advice:
+					render_clinical_advisory(advice)
+				else:
+					st.warning("No clinical advisory was generated.")
+			
+			with tab4:
+				st.markdown("### 📊 Multi-Agent Processing Timeline")
+				# Render detailed timeline
+				render_agents_timeline(session["events"], dx_validated, flags, advice, structured)
 			
 	
 	with col2:
